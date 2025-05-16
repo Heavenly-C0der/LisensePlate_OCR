@@ -1,49 +1,63 @@
 import streamlit as st
 import cv2
+import pytesseract
 import numpy as np
-import easyocr
+import platform
 from PIL import Image
 import tempfile
-import os
 
-st.set_page_config(page_title="License Plate OCR", layout="centered")
-
-st.title("🚗 License Plate Detection & OCR")
-
-# Load YOLOv5 model from Ultralytics
 from ultralytics import YOLO
-model = YOLO("yolov5s.pt")  # or your own plate detection model
 
-reader = easyocr.Reader(['en'])
+# Set Tesseract path if needed (especially on Windows)
+if platform.system() == 'Windows':
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-# Upload image
-uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+@st.cache_resource
+def load_model():
+    return YOLO("./models/license_plate_detector.pt")
 
-if uploaded_file is not None:
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    image = cv2.imdecode(file_bytes, 1)
-    st.image(image, caption="Original Image", use_column_width=True)
+model = load_model()
 
-    st.subheader("🔍 Detecting license plate...")
-    results = model.predict(image)
-    boxes = results[0].boxes.xyxy.cpu().numpy()  # x1, y1, x2, y2
+st.title("License Plate Detection and OCR")
 
-    if len(boxes) == 0:
-        st.warning("No license plate detected.")
-    else:
-        for i, box in enumerate(boxes):
-            x1, y1, x2, y2 = map(int, box)
-            plate_img = image[y1:y2, x1:x2]
-            st.image(plate_img, caption=f"Detected Plate #{i+1}", use_column_width=False)
+uploaded_files = st.file_uploader("Upload image(s) of vehicle(s)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-            st.subheader("📝 OCR Result")
-            plate_rgb = cv2.cvtColor(plate_img, cv2.COLOR_BGR2RGB)
-            result = reader.readtext(plate_rgb)
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, 1)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-            if result:
-                for detection in result:
-                    text = detection[1]
-                    conf = detection[2]
-                    st.success(f"Detected Text: `{text}` (Confidence: {conf:.2f})")
-            else:
-                st.warning("No text detected by OCR.")
+        # Run detection
+        results = model(image_rgb)
+
+        boxes = results[0].boxes.xyxy.cpu().numpy()
+        confidences = results[0].boxes.conf.cpu().numpy()
+        class_ids = results[0].boxes.cls.cpu().numpy()
+
+        annotated_image = image_rgb.copy()
+        plate_number = ""
+        plate_crop = None
+
+        for (x1, y1, x2, y2), conf, cls in zip(boxes, confidences, class_ids):
+            x1, y1, x2, y2 = map(int, (x1, y1, x2, y2))
+            plate_crop = annotated_image[y1:y2, x1:x2]
+            cv2.rectangle(annotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            if plate_crop is not None:
+                gray_plate = cv2.cvtColor(plate_crop, cv2.COLOR_RGB2GRAY)
+                _, thresh = cv2.threshold(gray_plate, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                plate_number = pytesseract.image_to_string(thresh, config='--psm 7').strip()
+                cv2.putText(annotated_image, plate_number, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 0), 2)
+
+        st.image(annotated_image, caption=f"Detected Plate: {plate_number if plate_number else 'N/A'}", use_column_width=True)
+
+        # Download buttons
+        result_pil = Image.fromarray(annotated_image)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            result_pil.save(tmp.name)
+            st.download_button("Download Annotated Image", data=open(tmp.name, "rb").read(), file_name=f"annotated_{uploaded_file.name}", mime="image/png")
+
+        if plate_number:
+            st.write("**Detected Plate Number:**", plate_number)
+            st.download_button("Download Plate Text", plate_number, file_name=f"plate_{uploaded_file.name}.txt")
