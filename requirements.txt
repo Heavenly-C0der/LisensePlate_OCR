@@ -1,6 +1,6 @@
 streamlit
-ultralytics==8.0.220
-torch==2.1.2
+ultralytics==8.0.114
+torch
 opencv-python-headless
 pytesseract
 Pillow
