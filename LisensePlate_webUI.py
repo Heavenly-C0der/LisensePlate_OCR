@@ -4,11 +4,12 @@ import pytesseract
 import numpy as np
 from PIL import Image
 import tempfile
-
+import platform
 from ultralytics import YOLO
 
 # Set Tesseract path if needed (especially on Windows)
-pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+if platform.system() == 'Windows':
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 @st.cache_resource
 def load_model():
