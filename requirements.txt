@@ -1,7 +1,8 @@
 streamlit
-torch
-ultralytics
+ultralytics==8.0.220
+torch==2.1.2
 opencv-python-headless
 pytesseract
 Pillow
 numpy
+platform
