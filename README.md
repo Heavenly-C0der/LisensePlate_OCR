@@ -98,7 +98,3 @@ This project is licensed under the MIT License.
 - [Streamlit](https://streamlit.io/) for the easy-to-use interface
 
 ---
-
-## ✨ Demo
-
-![App Screenshot](docs/demo_screenshot.png) <!-- Optional: add your own screenshot or GIF -->
